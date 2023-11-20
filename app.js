@@ -3,6 +3,7 @@ import fs from 'fs'
 import http from 'http'
 import { Octokit, App } from 'octokit'
 import { createNodeMiddleware } from '@octokit/webhooks'
+import  parseChangelog from 'changelog-parser'
 
 // Load environment variables from .env file
 dotenv.config()
@@ -24,7 +25,7 @@ const app = new App({
   },
   ...(enterpriseHostname && {
     Octokit: Octokit.defaults({
-      baseUrl: `https://${enterpriseHostname}/api/v3`
+      baseUrl: `https://api.github.com/api/v3`
     })
   })
 })
@@ -39,6 +40,20 @@ app.octokit.log.debug(`Authenticated as '${data.name}'`)
 app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
   console.log(`Received a pull request event for #${payload.pull_request.number}`)
   try {
+    const latest_release = await octokit.rest.repos.getLatestRelease({
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name
+    })
+
+    const changelong = await octokit.rest.repos.getContent({
+        owner: payload.repository.owner.login,
+        repo: payload.repository.name,
+        path: 'CHANGELOG.md'
+      }).then( response => new Buffer(response.data.content, response.data.encoding).toString('utf-8'))
+      .then( text => parseChangelog({text: text}))
+
+    console.info(`latest release is ${JSON.stringify(latest_release)} and changelog is ${JSON.stringify(changelong)}`)
+
     await octokit.rest.issues.createComment({
       owner: payload.repository.owner.login,
       repo: payload.repository.name,
